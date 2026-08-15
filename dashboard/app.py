@@ -254,4 +254,7 @@ if __name__ == "__main__":
     # requests; only it should start the monitor thread, or restarts double it up.
     if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         start_background_monitor()
-    app.run(debug=True, port=5757)
+    # host is pinned to localhost on purpose: debug=True enables the Werkzeug
+    # debugger, which allows arbitrary code execution to anyone who can reach
+    # it -- fine on localhost, never safe on a network-exposed host.
+    app.run(debug=True, port=5757, host="127.0.0.1")

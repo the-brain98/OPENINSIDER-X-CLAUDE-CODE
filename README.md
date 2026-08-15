@@ -56,8 +56,8 @@ SCHWAB_TOKEN_PATH=tokens.json
 Position protection alerts (your max-loss or sell-target order filling) are sent via [ntfy.sh](https://ntfy.sh) — free, no account needed:
 
 1. Install the ntfy app ([iOS](https://apps.apple.com/app/ntfy/id1625396347) / [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)), or just use a browser at `ntfy.sh/<topic>`
-2. Pick a long, hard-to-guess topic name (e.g. `colin-schwab-a8f3e91`) and subscribe to it in the app
-3. Put that same topic in `.env` as `NTFY_TOPIC=colin-schwab-a8f3e91`
+2. Pick a long, hard-to-guess topic name (e.g. `my-trading-alerts-a8f3e91`) and subscribe to it in the app
+3. Put that same topic in `.env` as `NTFY_TOPIC=my-trading-alerts-a8f3e91`
 
 Anyone who knows your topic name can read those notifications, so don't use something guessable. Leave `NTFY_TOPIC` blank to skip notifications entirely — everything else still works.
 
@@ -80,9 +80,20 @@ python app.py
 
 Open `http://127.0.0.1:5757`.
 
+## Security
+
+- This app only listens on `127.0.0.1` (localhost) — it is never reachable from your network or the internet, on this machine or anyone else's, regardless of whether this repo is public or private
+- Forking or cloning this repo gives someone the *code*, not access to any account. Every user must create their own Schwab Developer app and complete their own Schwab login (username + password + MFA, on Schwab's own site) to get a working `tokens.json` — there is no shared credential or backend anywhere in this code
+- `.env` and `tokens.json` are gitignored and were never committed to this repo's history — check before you push if you fork this, since a leaked App Secret or token would let someone place trades on *your* account
+- The conviction score, insider screener, and protective-order logic are plain, readable Python — nothing here calls out to an LLM or a third party with your account data, aside from the specific outbound calls listed above (Schwab, openinsider.com, Google News RSS, and ntfy.sh if configured)
+
 ## Notes
 
 - Everything runs locally — nothing is hosted or shared by default; the only outbound calls are to Schwab's API, openinsider.com, Google News RSS, and (if configured) ntfy.sh for push notifications
 - No trades are ever placed automatically by this dashboard — every buy requires a manual click plus a confirmation dialog. Max-loss/sell-target orders you set under "Protect" *are* real standing sell orders sitting on Schwab's books, exactly like a manual stop-loss or limit order you'd place yourself, and will execute without further clicks once triggered — that's the point of them
 - The conviction score is not investment advice — it's a transparent, auditable formula over publicly visible signals, not a recommendation engine
 - Push notifications for protective orders are sent by a background thread inside the dashboard process, polling Schwab every 60s — it only fires while `dashboard/app.py` is running
+
+## License
+
+MIT — see [LICENSE](LICENSE). Provided as-is, for personal/educational use; not investment advice.
