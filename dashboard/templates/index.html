@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schwab Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <span class="brand-name">Portfolio</span>
+  </div>
+  <div id="last-updated" class="muted"></div>
+</header>
+
+<main>
+  <section id="accounts" class="accounts-grid"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Positions</h2>
+    </div>
+    <div class="table-wrap">
+      <table id="positions-table">
+        <thead>
+          <tr>
+            <th class="al">Ticker</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Trend</th>
+            <th>1D</th><th>3D</th><th>5D</th><th>1M</th><th>All-Time</th><th>Mkt Value</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Insider Purchases</h2>
+      <span class="muted">via openinsider.com</span>
+    </div>
+    <div id="insider-filters">
+      <label>Max price <input id="f-max-price" type="number" value="20" placeholder="any"><span class="unit">$</span></label>
+      <label>Min qty <input id="f-min-qty" type="number" value="20000" placeholder="any"></label>
+      <label>Titles <input id="f-titles" type="text" value="CEO" placeholder="any (blank = all)"></label>
+      <button id="f-apply">Apply filters</button>
+      <button id="f-clear" class="btn-secondary">Clear</button>
+      <span id="filter-status" class="muted"></span>
+    </div>
+
+    <div class="panel-head" style="margin-top:22px">
+      <h3>Top Conviction Picks</h3>
+      <span class="muted">scored on cluster size, $ committed, insider role, stake increase, recency &mdash; not a recommendation</span>
+    </div>
+    <div id="ranked-picks" class="picks-grid"></div>
+
+    <div class="panel-head" style="margin-top:22px">
+      <h3>All matches</h3>
+    </div>
+    <div class="table-wrap">
+      <table id="insider-table">
+        <thead>
+          <tr>
+            <th class="al">Ticker</th><th class="al">Company</th><th class="al">Insider</th>
+            <th class="al">Title</th><th>Price</th><th>Qty</th><th>Value</th><th>Filed</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div id="buy-modal" class="hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Place order</h3>
+      <button id="buy-close" class="icon-btn">&times;</button>
+    </div>
+
+    <div class="field">
+      <label>Account</label>
+      <select id="buy-account"></select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Ticker</label>
+        <input id="buy-symbol" type="text">
+      </div>
+      <div class="field">
+        <label>Quantity</label>
+        <input id="buy-qty" type="number" value="1" min="1">
+      </div>
+    </div>
+    <p id="buy-estimate" class="estimate"></p>
+
+    <div class="modal-actions">
+      <button id="buy-cancel" class="btn-secondary">Cancel</button>
+      <button id="buy-confirm" class="btn-danger">Buy</button>
+    </div>
+    <p id="buy-result" class="result-msg"></p>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
