@@ -1,3 +1,5 @@
+<img width="1398" height="695" alt="dashboard screen shot" src="https://github.com/user-attachments/assets/f6734f8d-fcaf-4771-8f52-90de62999d6c" />
+
 # Schwab Insider-Trade Dashboard
 
 A local web dashboard for a Schwab **individual/retail** brokerage account. Combines live account data with an insider-purchase screener and a transparent conviction-scoring formula — runs entirely on your own machine.
