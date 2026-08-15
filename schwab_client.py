@@ -34,6 +34,34 @@ def get_quotes(symbols: list) -> dict:
     return resp.json()
 
 
+def get_orders(account_hash: str, status: str | None = None, lookback_days: int = 7) -> list:
+    """Orders entered in the trailing `lookback_days` (Schwab requires an explicit
+    time window). `status` can narrow to e.g. "FILLED" or "WORKING"."""
+    import datetime
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    start = now - datetime.timedelta(days=lookback_days)
+    params = {
+        "fromEnteredTime": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "toEnteredTime": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+    }
+    if status:
+        params["status"] = status
+    resp = requests.get(
+        f"{TRADER_BASE}/accounts/{account_hash}/orders", headers=_headers(), params=params
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_order(account_hash: str, order_id: str) -> dict:
+    resp = requests.get(
+        f"{TRADER_BASE}/accounts/{account_hash}/orders/{order_id}", headers=_headers()
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def get_price_history(symbol: str) -> list:
     """Daily candles for the trailing ~1 month, oldest first."""
     resp = requests.get(

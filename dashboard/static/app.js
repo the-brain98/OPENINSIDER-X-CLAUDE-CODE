@@ -90,11 +90,12 @@ async function loadPortfolio() {
       <td>${fmtPct(p.change1M)}</td>
       <td>${fmtPct(p.changeAllTime)}</td>
       <td class="mono">${fmtMoney(p.marketValue)}</td>
+      <td>${p.assetType === "EQUITY" ? `<button class="protect-btn" onclick="openProtectModal('${p.symbol}', ${p.qty}, ${p.currentPrice || "null"}, '${a.accountNumber}')">Protect</button>` : ""}</td>
     </tr>`
     )
   );
   document.querySelector("#positions-table tbody").innerHTML =
-    rows.join("") || `<tr><td colspan="11" class="muted" style="text-align:center;padding:24px">No positions</td></tr>`;
+    rows.join("") || `<tr><td colspan="12" class="muted" style="text-align:center;padding:24px">No positions</td></tr>`;
 
   document.getElementById("last-updated").textContent =
     "Updated " + new Date().toLocaleTimeString();
@@ -262,11 +263,137 @@ function closeBuyModal() {
   document.getElementById("buy-modal").classList.add("hidden");
 }
 
+function describeOrderOutcome(data) {
+  if (data.orderStatus === "REJECTED") {
+    return `Rejected: ${data.statusDescription || "Schwab did not accept this order."}`;
+  }
+  if (!data.orderStatus) {
+    return `Submitted (status unknown — check your Schwab account to confirm).`;
+  }
+  if (data.orderStatus === "FILLED") return `Filled.`;
+  return `Submitted — currently ${data.orderStatus.replaceAll("_", " ").toLowerCase()}.`;
+}
+
 function updateEstimate(price) {
   const qty = Number(document.getElementById("buy-qty").value || 0);
   const est = document.getElementById("buy-estimate");
   est.textContent = price ? `Est. cost ~ ${fmtMoney(price * qty)} at ${fmtMoney(price)}/share` : "";
 }
+
+let protectContext = { symbol: null, qty: null, accountHash: null };
+
+function accountHashFor(accountNumber) {
+  const match = accountHashes.find((a) => a.accountNumber === accountNumber);
+  return match ? match.hashValue : null;
+}
+
+async function openProtectModal(symbol, qty, price, accountNumber) {
+  protectContext = { symbol, qty, accountHash: accountHashFor(accountNumber) };
+  document.getElementById("protect-qty-label").textContent = `${qty} share${qty === 1 ? "" : "s"} of ${symbol}`;
+  document.getElementById("protect-max-loss").value = "";
+  document.getElementById("protect-sell-target").value = "";
+  document.getElementById("protect-result").textContent = "";
+  document.getElementById("protect-active").innerHTML = "";
+  document.getElementById("protect-modal").classList.remove("hidden");
+  loadActiveProtection();
+}
+
+function closeProtectModal() {
+  document.getElementById("protect-modal").classList.add("hidden");
+}
+
+async function loadActiveProtection() {
+  const box = document.getElementById("protect-active");
+  if (!protectContext.accountHash) return;
+  try {
+    const res = await fetch(`/api/orders/protective?accountHash=${protectContext.accountHash}`);
+    const orders = await res.json();
+    if (!res.ok) return;
+    const mine = orders.filter((o) => o.symbol === protectContext.symbol);
+    if (!mine.length) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML =
+      `<div class="muted" style="margin:10px 0 6px">Currently active</div>` +
+      mine
+        .map((o) => {
+          const label = o.kind === "maxLoss" ? "Maximum loss" : "Sell target";
+          return `<div class="protect-active-row">
+            <span>${label} @ ${fmtMoney(o.price)} &middot; ${o.qty} sh</span>
+            <button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="cancelProtectiveOrder(${o.orderId})">Cancel</button>
+          </div>`;
+        })
+        .join("");
+  } catch (e) {
+    // non-fatal, active-protection list is best-effort
+  }
+}
+
+async function cancelProtectiveOrder(orderId) {
+  if (!confirm("Cancel this protective order?")) return;
+  try {
+    await fetch(`/api/orders/${orderId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountHash: protectContext.accountHash }),
+    });
+    loadActiveProtection();
+  } catch (e) {
+    alert("Couldn't cancel: " + e);
+  }
+}
+
+document.getElementById("protect-cancel").addEventListener("click", closeProtectModal);
+document.getElementById("protect-close").addEventListener("click", closeProtectModal);
+document.getElementById("protect-modal").addEventListener("click", (e) => {
+  if (e.target.id === "protect-modal") closeProtectModal();
+});
+
+document.getElementById("protect-confirm").addEventListener("click", async () => {
+  const maxLossPrice = document.getElementById("protect-max-loss").value.trim();
+  const sellTargetPrice = document.getElementById("protect-sell-target").value.trim();
+  const resultEl = document.getElementById("protect-result");
+
+  if (!maxLossPrice && !sellTargetPrice) {
+    resultEl.textContent = "Enter at least one price.";
+    return;
+  }
+  if (!protectContext.accountHash) {
+    resultEl.textContent = "Couldn't find the account for this position.";
+    return;
+  }
+
+  const parts = [];
+  if (maxLossPrice) parts.push(`sell if it drops to $${maxLossPrice}`);
+  if (sellTargetPrice) parts.push(`sell if it rises to $${sellTargetPrice}`);
+  if (!confirm(`Set protection on ${protectContext.qty} share(s) of ${protectContext.symbol}: ${parts.join(" and ")}?`)) return;
+
+  resultEl.textContent = "Setting protection...";
+  try {
+    const res = await fetch("/api/orders/protect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountHash: protectContext.accountHash,
+        symbol: protectContext.symbol,
+        qty: protectContext.qty,
+        maxLossPrice: maxLossPrice || null,
+        sellTargetPrice: sellTargetPrice || null,
+      }),
+    });
+    const data = await res.json();
+    resultEl.textContent = res.ok ? describeOrderOutcome(data) : `Failed: ${data.error || JSON.stringify(data)}`;
+    resultEl.style.color = res.ok && data.orderStatus === "REJECTED" ? "var(--red)" : "var(--muted)";
+    if (res.ok && data.orderStatus !== "REJECTED") {
+      document.getElementById("protect-max-loss").value = "";
+      document.getElementById("protect-sell-target").value = "";
+      loadActiveProtection();
+    }
+  } catch (e) {
+    resultEl.textContent = "Error: " + e;
+  }
+});
 
 const FILTER_STORAGE_KEY = "dashboard-insider-filters";
 
@@ -331,7 +458,8 @@ document.getElementById("buy-confirm").addEventListener("click", async () => {
       body: JSON.stringify({ symbol, qty, accountHash }),
     });
     const data = await res.json();
-    resultEl.textContent = res.ok ? `Order placed. Status ${data.status_code}.` : `Failed: ${JSON.stringify(data)}`;
+    resultEl.textContent = res.ok ? describeOrderOutcome(data) : `Failed: ${JSON.stringify(data)}`;
+    resultEl.style.color = res.ok && data.orderStatus === "REJECTED" ? "var(--red)" : "var(--muted)";
     loadPortfolio();
   } catch (e) {
     resultEl.textContent = "Error: " + e;

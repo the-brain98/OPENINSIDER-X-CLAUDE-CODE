@@ -30,7 +30,7 @@
         <thead>
           <tr>
             <th class="al">Ticker</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Trend</th>
-            <th>1D</th><th>3D</th><th>5D</th><th>1M</th><th>All-Time</th><th>Mkt Value</th>
+            <th>1D</th><th>3D</th><th>5D</th><th>1M</th><th>All-Time</th><th>Mkt Value</th><th></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -103,6 +103,34 @@
       <button id="buy-confirm" class="btn-danger">Buy</button>
     </div>
     <p id="buy-result" class="result-msg"></p>
+  </div>
+</div>
+
+<div id="protect-modal" class="hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Protect this position</h3>
+      <button id="protect-close" class="icon-btn">&times;</button>
+    </div>
+    <p class="modal-sub">Set either or both. This applies to your whole <span id="protect-qty-label"></span> share position — nothing happens unless the price actually hits one of these.</p>
+
+    <div class="field">
+      <label>Sell automatically if the price drops to (your maximum loss)</label>
+      <input id="protect-max-loss" type="number" step="0.01" placeholder="e.g. 45.00">
+    </div>
+    <div class="field">
+      <label>Sell automatically if the price rises to (the price you want to sell at)</label>
+      <input id="protect-sell-target" type="number" step="0.01" placeholder="e.g. 60.00">
+    </div>
+    <p class="modal-sub">You'll get a push notification the moment either one triggers.</p>
+
+    <div id="protect-active"></div>
+
+    <div class="modal-actions">
+      <button id="protect-cancel" class="btn-secondary">Cancel</button>
+      <button id="protect-confirm" class="btn-primary">Set protection</button>
+    </div>
+    <p id="protect-result" class="result-msg"></p>
   </div>
 </div>
 

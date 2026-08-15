@@ -357,19 +357,46 @@ button {
 }
 .buy-btn:hover { background: var(--green); color: #06140d; }
 
+.protect-btn {
+  background: rgba(242, 193, 78, 0.12);
+  color: #f2c14e;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.protect-btn:hover { background: #f2c14e; color: #1a1200; }
+
+.modal-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.protect-active-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12.5px;
+}
+
 /* ---- modal ---- */
-#buy-modal {
+#buy-modal, #protect-modal {
   position: fixed;
   inset: 0;
   background: rgba(5, 6, 9, 0.85);
   z-index: 20;
 }
-#buy-modal:not(.hidden) {
+#buy-modal:not(.hidden), #protect-modal:not(.hidden) {
   display: flex;
   align-items: center;
   justify-content: center;
 }
-#buy-modal.hidden { display: none; }
+#buy-modal.hidden, #protect-modal.hidden { display: none; }
 
 .modal-box {
   background: var(--panel-2);

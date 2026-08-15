@@ -9,6 +9,7 @@ A local web dashboard for a Schwab **individual/retail** brokerage account. Comb
 - **Conviction scoring** — insider-purchase clusters ranked 0–100 by a documented point formula (cluster size, dollar amount committed, insider seniority, stake-percentage increase, recency). This is a plain formula, not an AI/LLM call — fully readable in `quant_score.py`, not a black box
 - **News** — recent headlines per ticker, fetched on demand
 - **Manual order placement** — place real market orders through Schwab's Trader API, gated behind an explicit click and a confirmation dialog. Nothing trades automatically
+- **Position protection** — per position, set a "sell if it drops to" (max loss) and/or "sell if it rises to" (sell target) price in plain language. If you set both, they're placed as one bracket order so that whichever hits first cancels the other. You get a push notification the moment either one fires
 
 ## Requirements
 
@@ -50,6 +51,16 @@ SCHWAB_TOKEN_PATH=tokens.json
 
 `.env` is gitignored — never commit real credentials.
 
+### 3b. (Optional) Turn on push notifications
+
+Position protection alerts (your max-loss or sell-target order filling) are sent via [ntfy.sh](https://ntfy.sh) — free, no account needed:
+
+1. Install the ntfy app ([iOS](https://apps.apple.com/app/ntfy/id1625396347) / [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy)), or just use a browser at `ntfy.sh/<topic>`
+2. Pick a long, hard-to-guess topic name (e.g. `colin-schwab-a8f3e91`) and subscribe to it in the app
+3. Put that same topic in `.env` as `NTFY_TOPIC=colin-schwab-a8f3e91`
+
+Anyone who knows your topic name can read those notifications, so don't use something guessable. Leave `NTFY_TOPIC` blank to skip notifications entirely — everything else still works.
+
 ### 4. Log in
 
 ```bash
@@ -71,6 +82,7 @@ Open `http://127.0.0.1:5757`.
 
 ## Notes
 
-- Everything runs locally — nothing is hosted or shared by default; the only outbound calls are to Schwab's API, openinsider.com, and Google News RSS
-- No trades are ever placed automatically — every buy requires a manual click plus a confirmation dialog
+- Everything runs locally — nothing is hosted or shared by default; the only outbound calls are to Schwab's API, openinsider.com, Google News RSS, and (if configured) ntfy.sh for push notifications
+- No trades are ever placed automatically by this dashboard — every buy requires a manual click plus a confirmation dialog. Max-loss/sell-target orders you set under "Protect" *are* real standing sell orders sitting on Schwab's books, exactly like a manual stop-loss or limit order you'd place yourself, and will execute without further clicks once triggered — that's the point of them
 - The conviction score is not investment advice — it's a transparent, auditable formula over publicly visible signals, not a recommendation engine
+- Push notifications for protective orders are sent by a background thread inside the dashboard process, polling Schwab every 60s — it only fires while `dashboard/app.py` is running

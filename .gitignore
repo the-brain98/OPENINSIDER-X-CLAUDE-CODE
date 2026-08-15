@@ -1,4 +1,7 @@
 .env
 tokens.json
+order_notify_state.json
 __pycache__/
 HANDOFF.md
+venv/
+.venv/

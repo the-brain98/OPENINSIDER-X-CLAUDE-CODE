@@ -1,15 +1,17 @@
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, jsonify, request, render_template
 
-from schwab_client import get_accounts, get_account_numbers, get_quotes, get_price_history
-from schwab_orders import place_market_buy
+from schwab_client import get_accounts, get_account_numbers, get_quotes, get_price_history, get_orders, get_order
+from schwab_orders import place_market_buy, place_protective_orders, cancel_order
 from insider_screener import fetch_purchases_under
 from quant_score import score_clusters
 from news import get_headlines
+from order_monitor import start_background_monitor, _leaf_orders
 
 app = Flask(__name__)
 
@@ -147,6 +149,25 @@ def api_account_hashes():
     return jsonify(get_account_numbers())
 
 
+def _await_order_status(account_hash: str, order_id: str | None) -> dict | None:
+    """A 2xx from Schwab's order POST only means the request was *accepted*,
+    not that the trade filled -- it can still be rejected (insufficient
+    buying power, market closed, etc.) a moment later. Poll briefly so callers
+    can show what actually happened instead of a bare HTTP status code."""
+    if not order_id:
+        return None
+    order = None
+    for _ in range(4):
+        try:
+            order = get_order(account_hash, order_id)
+        except Exception:
+            return order
+        if order.get("status") not in ("QUEUED", "PENDING_ACTIVATION", "AWAITING_PARENT_ORDER", None):
+            break
+        time.sleep(0.5)
+    return order
+
+
 @app.route("/api/orders", methods=["POST"])
 def api_place_order():
     body = request.get_json(force=True)
@@ -155,8 +176,82 @@ def api_place_order():
     qty = int(body["qty"])
 
     result = place_market_buy(account_hash, symbol, qty)
+    order = _await_order_status(account_hash, result.get("order_id"))
+    if order:
+        result["orderStatus"] = order.get("status")
+        result["statusDescription"] = order.get("statusDescription")
+    return jsonify(result)
+
+
+def _open_protective_orders(account_hash: str) -> list:
+    orders = get_orders(account_hash, status="WORKING", lookback_days=30)
+    out = []
+    for order in orders:
+        for leaf in _leaf_orders(order):
+            legs = leaf.get("orderLegCollection") or []
+            order_type = leaf.get("orderType")
+            is_protective_sell = order_type in ("STOP", "LIMIT") and any(
+                leg.get("instruction") == "SELL" for leg in legs
+            )
+            if not is_protective_sell or leaf.get("status") != "WORKING":
+                continue
+            out.append(
+                {
+                    "orderId": leaf.get("orderId"),
+                    "symbol": legs[0]["instrument"]["symbol"] if legs else None,
+                    "qty": legs[0].get("quantity") if legs else None,
+                    "kind": "maxLoss" if order_type == "STOP" else "sellTarget",
+                    "price": leaf.get("stopPrice") if order_type == "STOP" else leaf.get("price"),
+                }
+            )
+    return out
+
+
+@app.route("/api/orders/protective")
+def api_protective_orders():
+    account_hash = request.args.get("accountHash")
+    if not account_hash:
+        return jsonify({"error": "accountHash required"}), 400
+    try:
+        return jsonify(_open_protective_orders(account_hash))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/orders/protect", methods=["POST"])
+def api_protect_position():
+    body = request.get_json(force=True)
+    account_hash = body["accountHash"]
+    symbol = body["symbol"].upper()
+    qty = int(body["qty"])
+    max_loss_raw = body.get("maxLossPrice")
+    sell_target_raw = body.get("sellTargetPrice")
+    max_loss_price = float(max_loss_raw) if max_loss_raw not in (None, "") else None
+    sell_target_price = float(sell_target_raw) if sell_target_raw not in (None, "") else None
+
+    try:
+        result = place_protective_orders(account_hash, symbol, qty, max_loss_price, sell_target_price)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    order = _await_order_status(account_hash, result.get("order_id"))
+    if order:
+        result["orderStatus"] = order.get("status")
+        result["statusDescription"] = order.get("statusDescription")
+    return jsonify(result)
+
+
+@app.route("/api/orders/<order_id>/cancel", methods=["POST"])
+def api_cancel_order(order_id):
+    body = request.get_json(force=True)
+    account_hash = body["accountHash"]
+    result = cancel_order(account_hash, order_id)
     return jsonify(result)
 
 
 if __name__ == "__main__":
+    # debug=True below makes Werkzeug re-exec itself into a reloader child process
+    # (setting WERKZEUG_RUN_MAIN=true) which is the one that actually serves
+    # requests; only it should start the monitor thread, or restarts double it up.
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_background_monitor()
     app.run(debug=True, port=5757)
