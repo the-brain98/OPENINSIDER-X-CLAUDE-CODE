@@ -3,3 +3,8 @@ python-dotenv
 pandas
 lxml
 flask
+yfinance
+numpy
+duckdb
+pyyaml
+beautifulsoup4

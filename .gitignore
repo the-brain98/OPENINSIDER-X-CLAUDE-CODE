@@ -5,3 +5,6 @@ __pycache__/
 HANDOFF.md
 venv/
 .venv/
+politicians/*.duckdb
+politicians/*.duckdb.wal
+politicians/legislators_cache.json

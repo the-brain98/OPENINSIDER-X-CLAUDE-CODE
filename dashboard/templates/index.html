@@ -39,38 +39,130 @@
   </section>
 
   <section class="panel">
-    <div class="panel-head">
-      <h2>Insider Purchases</h2>
-      <span class="muted">via openinsider.com</span>
-    </div>
-    <div id="insider-filters">
-      <label>Max price <input id="f-max-price" type="number" value="20" placeholder="any"><span class="unit">$</span></label>
-      <label>Min qty <input id="f-min-qty" type="number" value="20000" placeholder="any"></label>
-      <label>Titles <input id="f-titles" type="text" value="CEO" placeholder="any (blank = all)"></label>
-      <button id="f-apply">Apply filters</button>
-      <button id="f-clear" class="btn-secondary">Clear</button>
-      <span id="filter-status" class="muted"></span>
+    <div class="tab-nav">
+      <button class="tab-btn" data-tab="insiders">Insider Purchases</button>
+      <button class="tab-btn" data-tab="rotation">Rotation Tracker</button>
+      <button class="tab-btn" data-tab="politicians">Politicians</button>
     </div>
 
-    <div class="panel-head" style="margin-top:22px">
-      <h3>Top Conviction Picks</h3>
-      <span class="muted">scored on cluster size, $ committed, insider role, stake increase, recency &mdash; not a recommendation</span>
-    </div>
-    <div id="ranked-picks" class="picks-grid"></div>
+    <div id="tab-insiders" class="tab-panel">
+      <div class="panel-head">
+        <span class="muted">via openinsider.com</span>
+      </div>
+      <div id="insider-filters">
+        <label>Max price <input id="f-max-price" type="number" value="20" placeholder="any"><span class="unit">$</span></label>
+        <label>Min qty <input id="f-min-qty" type="number" value="20000" placeholder="any"></label>
+        <label>Titles <input id="f-titles" type="text" value="CEO" placeholder="any (blank = all)"></label>
+        <button id="f-apply">Apply filters</button>
+        <button id="f-clear" class="btn-secondary">Clear</button>
+        <span id="filter-status" class="muted"></span>
+      </div>
 
-    <div class="panel-head" style="margin-top:22px">
-      <h3>All matches</h3>
+      <div class="panel-head" style="margin-top:22px">
+        <h3>Top Conviction Picks</h3>
+        <span class="muted">scored on cluster size, $ committed, insider role, stake increase, recency &mdash; not a recommendation</span>
+      </div>
+      <div id="ranked-picks" class="picks-grid"></div>
+
+      <div class="panel-head" style="margin-top:22px">
+        <h3>All matches</h3>
+      </div>
+      <div class="table-wrap">
+        <table id="insider-table">
+          <thead>
+            <tr>
+              <th class="al">Ticker</th><th class="al">Company</th><th class="al">Insider</th>
+              <th class="al">Title</th><th>Price</th><th>Qty</th><th>Value</th><th>Filed</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table id="insider-table">
-        <thead>
-          <tr>
-            <th class="al">Ticker</th><th class="al">Company</th><th class="al">Insider</th>
-            <th class="al">Title</th><th>Price</th><th>Qty</th><th>Value</th><th>Filed</th><th></th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+
+    <div id="tab-rotation" class="tab-panel">
+      <div class="panel-head">
+        <span class="muted">broad-beta &amp; sector ETFs, ranked on a 10-day rotation cycle &middot; live Schwab quotes + yfinance history</span>
+      </div>
+      <div id="rotation-filters">
+        <button id="r-refresh">Refresh</button>
+        <span id="rotation-status" class="muted"></span>
+      </div>
+
+      <div id="rotation-summary" class="rotation-summary"></div>
+
+      <div class="table-wrap">
+        <table id="rotation-table">
+          <thead>
+            <tr>
+              <th class="al">Rank</th><th class="al">Ticker</th><th class="al">Sector</th><th>Last</th>
+              <th>10d %</th><th>% from 10d High</th><th>RSI14</th><th>Rel Vol (10d)</th><th class="al">Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <details class="rules-box">
+        <summary>How to read this</summary>
+        <p><b>Pullback</b> (green) &mdash; strong rank + healthy pullback + RSI not overbought: best long setups.</p>
+        <p><b>Extended</b> (yellow) &mdash; leading but stretched: near its 10-day high or RSI overbought.</p>
+        <p><b>Fade</b> (red) &mdash; weak rank + elevated RSI or near highs: potential short-term short.</p>
+        <p><b>Consolidate</b> (gray) &mdash; everything else: sideways, low conviction.</p>
+        <p><b>% from 10d High</b> = pullback depth. <b>RSI14</b> = 14-period RSI. <b>Rel Vol (10d)</b> = today's volume &divide; 10-day average volume.</p>
+        <p><b>Universe</b> = broad market beta (SPY, QQQ, IWM) + the 11 SPDR sector ETFs + high-volume thematics (SMH, KRE, XBI) &mdash; the highest-volume, most institutionally-relevant vehicles, not individual stocks.</p>
+        <p class="muted">Category cutoffs (rank thirds, RSI 70/30, pullback bands) are inferred defaults, not verified exact thresholds &mdash; tune them in <code>rotation_screener.py</code> if needed.</p>
+      </details>
+    </div>
+
+    <div id="tab-politicians" class="tab-panel">
+      <div class="panel-head">
+        <span class="muted">Senate + House Periodic Transaction Reports, scraped from efdsearch.senate.gov &amp; disclosures-clerk.house.gov</span>
+      </div>
+      <div id="politicians-filters">
+        <label>Ticker <input id="p-ticker" type="text" placeholder="any"></label>
+        <label>Chamber
+          <select id="p-chamber">
+            <option value="">Any</option>
+            <option value="Senate">Senate</option>
+            <option value="House">House</option>
+          </select>
+        </label>
+        <label>Party
+          <select id="p-party">
+            <option value="">Any</option>
+            <option value="D">Democrat</option>
+            <option value="R">Republican</option>
+            <option value="I">Independent</option>
+            <option value="?">Unknown</option>
+          </select>
+        </label>
+        <button id="p-apply">Apply filters</button>
+        <button id="p-refresh" class="btn-secondary">Refresh</button>
+        <span id="politicians-status" class="muted"></span>
+      </div>
+
+      <div id="politicians-summary" class="rotation-summary"></div>
+
+      <div class="table-wrap">
+        <table id="politicians-table">
+          <thead>
+            <tr>
+              <th class="al">Name</th><th class="al">Party</th><th class="al">Chamber</th>
+              <th class="al">Ticker</th><th class="al">Company</th><th class="al">Type</th>
+              <th class="al">Amount</th><th>Traded</th><th>Filed</th><th>Lag</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <details class="rules-box">
+        <summary>About this data</summary>
+        <p>Congressional trade disclosures (STOCK Act) only require a <b>dollar range</b> per trade &mdash; never an exact price or share count. There is no "shares bought" field in this data by law, only the disclosed bracket (e.g. "$1,001 &ndash; $15,000").</p>
+        <p>Party affiliation isn't part of the disclosure either &mdash; it's resolved separately against the public <code>unitedstates/congress-legislators</code> dataset. An unresolved or ambiguous name shows as <b>Unknown</b> rather than a guess.</p>
+        <p><b>Filed</b> is when the trade became public, not when it happened &mdash; <b>Lag</b> is the gap between the two, and can legally run 30&ndash;45 days.</p>
+      </details>
     </div>
   </section>
 </main>

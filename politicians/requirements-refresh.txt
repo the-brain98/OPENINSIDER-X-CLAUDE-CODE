@@ -1,0 +1,5 @@
+# Only needed to run refresh.py (re-scraping new filings), not to read the
+# dashboard's Politicians tab -- kept out of the main requirements.txt because
+# pdfplumber pulls in `cryptography`, which needs a Rust toolchain to build
+# from source on platforms without a prebuilt wheel.
+pdfplumber

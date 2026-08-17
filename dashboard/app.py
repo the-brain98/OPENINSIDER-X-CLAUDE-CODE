@@ -12,6 +12,8 @@ from insider_screener import fetch_purchases_under
 from quant_score import score_clusters
 from news import get_headlines
 from order_monitor import start_background_monitor, _leaf_orders
+from rotation_screener import get_sector_rotation_table
+from politicians_screener import get_trades as get_politician_trades, is_configured as politicians_configured
 
 app = Flask(__name__)
 
@@ -133,6 +135,35 @@ def api_insiders_ranked():
     df = fetch_purchases_under(max_price, max_rows=1000, min_qty=min_qty, titles=titles)
     ranked = score_clusters(df)
     return jsonify(ranked[:top_n])
+
+
+@app.route("/api/rotation")
+def api_rotation():
+    force_refresh = (request.args.get("refresh") or "") == "1"
+    try:
+        df = get_sector_rotation_table(force_refresh=force_refresh)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    # df.to_dict() leaves NaN as float('nan'), which jsonify serializes as the bare
+    # token `NaN` -- invalid per the JSON spec, so browsers' JSON.parse() rejects it.
+    # pandas' own to_json() correctly emits `null` instead.
+    return app.response_class(df.to_json(orient="records"), mimetype="application/json")
+
+
+@app.route("/api/politicians")
+def api_politicians():
+    if not politicians_configured():
+        return jsonify({"error": "Politicians data not set up -- see politicians/README.md"}), 503
+    ticker = (request.args.get("ticker") or "").strip() or None
+    chamber = (request.args.get("chamber") or "").strip() or None
+    party = (request.args.get("party") or "").strip() or None
+    limit = int(request.args.get("limit") or 300)
+    force_refresh = (request.args.get("refresh") or "") == "1"
+    try:
+        rows = get_politician_trades(ticker=ticker, chamber=chamber, party=party, limit=limit, force_refresh=force_refresh)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify(rows)
 
 
 @app.route("/api/news/<ticker>")

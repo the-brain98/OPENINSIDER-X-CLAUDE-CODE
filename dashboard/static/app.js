@@ -251,6 +251,141 @@ async function toggleNews(btn, ticker) {
   }
 }
 
+function statusClass(status) {
+  if (status === "Pullback") return "rot-pullback";
+  if (status === "Extended") return "rot-extended";
+  if (status === "Fade") return "rot-fade";
+  return "rot-consolidate";
+}
+
+function setRotationStatus(msg, isError) {
+  const el = document.getElementById("rotation-status");
+  el.textContent = msg;
+  el.style.color = isError ? "var(--red)" : "var(--muted)";
+}
+
+async function loadRotation(forceRefresh) {
+  const tbody = document.querySelector("#rotation-table tbody");
+  setRotationStatus(forceRefresh ? "Refreshing..." : "Loading...", false);
+
+  try {
+    const params = forceRefresh ? new URLSearchParams({ refresh: "1" }) : new URLSearchParams();
+    const res = await fetch(`/api/rotation?${params}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">${data.error || "Request failed"}</td></tr>`;
+      setRotationStatus(data.error || "Request failed", true);
+      return;
+    }
+
+    tbody.innerHTML =
+      data
+        .map(
+          (r) => `
+    <tr>
+      <td class="al mono">${r["Rank"]}</td>
+      <td class="al ticker clickable" onclick="openBuyModal('${r["Ticker"]}', ${r["Last"]})">${r["Ticker"]}</td>
+      <td class="al muted">${r["Sector"]}</td>
+      <td class="mono">${fmtMoney(r["Last"])}</td>
+      <td>${fmtPct(r["10d %"])}</td>
+      <td>${fmtPct(r["% from 10d High"])}</td>
+      <td class="mono">${r["RSI14"]}</td>
+      <td class="mono">${r["Rel Vol (10d)"] ?? "—"}x</td>
+      <td class="al"><span class="chip sig ${statusClass(r["Status"])}">${r["Status"]}</span></td>
+    </tr>`
+        )
+        .join("") || `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">No data</td></tr>`;
+
+    const counts = { Pullback: 0, Extended: 0, Fade: 0, Consolidate: 0 };
+    data.forEach((r) => { counts[r["Status"]] = (counts[r["Status"]] || 0) + 1; });
+    document.getElementById("rotation-summary").innerHTML = `
+      <div class="rotation-stat"><div class="label">Pullback</div><div class="value rot-pullback-text">${counts.Pullback}</div></div>
+      <div class="rotation-stat"><div class="label">Extended</div><div class="value rot-extended-text">${counts.Extended}</div></div>
+      <div class="rotation-stat"><div class="label">Fade</div><div class="value rot-fade-text">${counts.Fade}</div></div>
+      <div class="rotation-stat"><div class="label">Consolidate</div><div class="value">${counts.Consolidate}</div></div>
+    `;
+
+    setRotationStatus(`Updated ${new Date().toLocaleTimeString()}`, false);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Couldn't load: ${e}</td></tr>`;
+    setRotationStatus("Couldn't load rotation tracker", true);
+  }
+}
+
+document.getElementById("r-refresh").addEventListener("click", () => loadRotation(true));
+
+function partyClass(partyShort) {
+  if (partyShort === "D") return "party-d";
+  if (partyShort === "R") return "party-r";
+  if (partyShort === "I") return "party-i";
+  return "party-unknown";
+}
+
+function setPoliticiansStatus(msg, isError) {
+  const el = document.getElementById("politicians-status");
+  el.textContent = msg;
+  el.style.color = isError ? "var(--red)" : "var(--muted)";
+}
+
+async function loadPoliticians(forceRefresh) {
+  const tbody = document.querySelector("#politicians-table tbody");
+  setPoliticiansStatus(forceRefresh ? "Refreshing..." : "Loading...", false);
+
+  try {
+    const params = new URLSearchParams({
+      ticker: document.getElementById("p-ticker").value.trim(),
+      chamber: document.getElementById("p-chamber").value,
+      party: document.getElementById("p-party").value,
+    });
+    if (forceRefresh) params.set("refresh", "1");
+    const res = await fetch(`/api/politicians?${params}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:24px">${data.error || "Request failed"}</td></tr>`;
+      document.getElementById("politicians-summary").innerHTML = "";
+      setPoliticiansStatus(data.error || "Request failed", true);
+      return;
+    }
+
+    tbody.innerHTML =
+      data
+        .map(
+          (r) => `
+    <tr>
+      <td class="al">${truncCell(r["Name"], 20)}</td>
+      <td class="al"><span class="chip sig ${partyClass(r["PartyShort"])}">${r["Party"]}</span></td>
+      <td class="al muted">${r["Chamber"]}</td>
+      <td class="al ticker">${r["Ticker"] || "&mdash;"}</td>
+      <td class="al trunc">${truncCell(r["Company"], 30)}</td>
+      <td class="al muted">${r["Type"] || ""}</td>
+      <td class="al mono">${r["Amount"]}</td>
+      <td class="mono">${r["TxnDate"] || "—"}</td>
+      <td class="mono">${r["FiledDate"] || "—"}</td>
+      <td class="mono">${r["LagDays"] ?? "—"}</td>
+    </tr>`
+        )
+        .join("") || `<tr><td colspan="10" class="muted" style="text-align:center;padding:24px">No matches for these filters</td></tr>`;
+
+    const dem = data.filter((r) => r["PartyShort"] === "D").length;
+    const rep = data.filter((r) => r["PartyShort"] === "R").length;
+    document.getElementById("politicians-summary").innerHTML = `
+      <div class="rotation-stat"><div class="label">Trades shown</div><div class="value">${data.length}</div><div class="sub">most recently filed first</div></div>
+      <div class="rotation-stat"><div class="label">Democrat</div><div class="value party-d-text">${dem}</div></div>
+      <div class="rotation-stat"><div class="label">Republican</div><div class="value party-r-text">${rep}</div></div>
+    `;
+
+    setPoliticiansStatus(`Updated ${new Date().toLocaleTimeString()}`, false);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:24px">Couldn't load: ${e}</td></tr>`;
+    setPoliticiansStatus("Couldn't load politicians tracker", true);
+  }
+}
+
+document.getElementById("p-apply").addEventListener("click", () => loadPoliticians(false));
+document.getElementById("p-refresh").addEventListener("click", () => loadPoliticians(true));
+
 function openBuyModal(symbol, price) {
   document.getElementById("buy-symbol").value = symbol;
   document.getElementById("buy-qty").value = 1;
@@ -466,11 +601,29 @@ document.getElementById("buy-confirm").addEventListener("click", async () => {
   }
 });
 
+const TAB_STORAGE_KEY = "dashboard-active-tab";
+
+function switchTab(name) {
+  document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${name}`));
+  localStorage.setItem(TAB_STORAGE_KEY, name);
+}
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+
+switchTab(localStorage.getItem(TAB_STORAGE_KEY) || "insiders");
+
 restoreFilters();
 loadAccountHashes();
 loadPortfolio();
 loadInsiders();
 loadRankedPicks();
+loadRotation(false);
+loadPoliticians(false);
 setInterval(loadPortfolio, 15000);
 setInterval(loadInsiders, 120000);
 setInterval(loadRankedPicks, 120000);
+setInterval(() => loadRotation(false), 120000);
+setInterval(() => loadPoliticians(false), 120000);
