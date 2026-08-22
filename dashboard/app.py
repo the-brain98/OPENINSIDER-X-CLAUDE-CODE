@@ -13,7 +13,10 @@ from quant_score import score_clusters
 from news import get_headlines
 from order_monitor import start_background_monitor, _leaf_orders
 from rotation_screener import get_sector_rotation_table
+from sector_insiders import get_sector_insider_buys
+from top_stocks import get_day_gainers, get_mega_caps
 from politicians_screener import get_trades as get_politician_trades, is_configured as politicians_configured
+import ai_debate
 
 app = Flask(__name__)
 
@@ -150,6 +153,34 @@ def api_rotation():
     return app.response_class(df.to_json(orient="records"), mimetype="application/json")
 
 
+@app.route("/api/top20")
+def api_top20():
+    # the two boards have independent upstreams (Yahoo vs Schwab); a failure in
+    # one shouldn't blank the other, so errors are reported per-section
+    out = {}
+    try:
+        out["gainers"] = get_day_gainers()
+    except Exception as e:
+        out["gainersError"] = str(e)
+    try:
+        out["megaCaps"] = get_mega_caps()
+    except Exception as e:
+        out["megaCapsError"] = str(e)
+    return jsonify(out)
+
+
+@app.route("/api/rotation/insiders")
+def api_rotation_insiders():
+    etf = (request.args.get("etf") or "").strip().upper()
+    try:
+        result = get_sector_insider_buys(etf)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify(result)
+
+
 @app.route("/api/politicians")
 def api_politicians():
     if not politicians_configured():
@@ -173,6 +204,27 @@ def api_news(ticker):
         return jsonify(headlines)
     except Exception as e:
         return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/debate", methods=["POST"])
+def api_debate():
+    if not ai_debate.is_configured():
+        return jsonify({"error": "Add ANTHROPIC_API_KEY to .env to enable the AI Debate tab."}), 503
+
+    body = request.get_json(force=True)
+    ticker = (body.get("ticker") or "").strip().upper()
+    question = (body.get("question") or "").strip()
+    force_refresh = bool(body.get("forceRefresh"))
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+    if not question:
+        return jsonify({"error": "question required"}), 400
+
+    try:
+        result = ai_debate.ask(ticker, question, force_refresh=force_refresh)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    return jsonify(result)
 
 
 @app.route("/api/accounts/hashes")

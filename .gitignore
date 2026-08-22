@@ -8,3 +8,4 @@ venv/
 politicians/*.duckdb
 politicians/*.duckdb.wal
 politicians/legislators_cache.json
+sector_cache.json

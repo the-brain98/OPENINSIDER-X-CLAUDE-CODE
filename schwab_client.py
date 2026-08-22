@@ -34,6 +34,18 @@ def get_quotes(symbols: list) -> dict:
     return resp.json()
 
 
+def get_movers(symbol_id: str, sort: str = "PERCENT_CHANGE_UP", frequency: int = 0) -> list:
+    """Top movers for an index/exchange, e.g. "$SPX", "NYSE", "NASDAQ".
+    sort: VOLUME | TRADES | PERCENT_CHANGE_UP | PERCENT_CHANGE_DOWN."""
+    resp = requests.get(
+        f"{MARKETDATA_BASE}/movers/{symbol_id}",
+        headers=_headers(),
+        params={"sort": sort, "frequency": frequency},
+    )
+    resp.raise_for_status()
+    return resp.json().get("screeners", [])
+
+
 def get_orders(account_hash: str, status: str | None = None, lookback_days: int = 7) -> list:
     """Orders entered in the trailing `lookback_days` (Schwab requires an explicit
     time window). `status` can narrow to e.g. "FILLED" or "WORKING"."""

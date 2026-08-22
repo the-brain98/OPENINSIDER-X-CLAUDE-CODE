@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Schwab Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -43,6 +43,7 @@
       <button class="tab-btn" data-tab="insiders">Insider Purchases</button>
       <button class="tab-btn" data-tab="rotation">Rotation Tracker</button>
       <button class="tab-btn" data-tab="politicians">Politicians</button>
+      <button class="tab-btn" data-tab="top20">TOP 20 TODAY + MEGA CAPS</button>
     </div>
 
     <div id="tab-insiders" class="tab-panel">
@@ -164,8 +165,78 @@
         <p><b>Filed</b> is when the trade became public, not when it happened &mdash; <b>Lag</b> is the gap between the two, and can legally run 30&ndash;45 days.</p>
       </details>
     </div>
+
+    <div id="tab-top20" class="tab-panel">
+      <div class="panel-head">
+        <span class="muted">gainers via Yahoo Finance's day-gainers screener &middot; mega caps priced live via Schwab</span>
+      </div>
+      <div id="top20-filters">
+        <button id="t20-refresh">Refresh</button>
+        <span id="top20-status" class="muted"></span>
+      </div>
+
+      <div class="panel-head" style="margin-top:10px">
+        <h3>Today's Top 20 Gainers</h3>
+        <span class="muted">biggest % moves in the market right now &mdash; skews volatile, not a recommendation</span>
+      </div>
+      <div class="table-wrap">
+        <table id="gainers-table">
+          <thead>
+            <tr>
+              <th class="al">#</th><th class="al">Ticker</th><th class="al">Company</th>
+              <th>Last</th><th>Today</th><th>Volume</th><th>Mkt Cap</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="panel-head" style="margin-top:22px">
+        <h3>Mega Caps</h3>
+        <span class="muted">the market's 20 biggest names &mdash; fixed watchlist, ranked by size</span>
+      </div>
+      <div class="table-wrap">
+        <table id="megacaps-table">
+          <thead>
+            <tr>
+              <th class="al">#</th><th class="al">Ticker</th><th class="al">Company</th>
+              <th>Last</th><th class="al">Trend</th><th>1D</th><th>5D</th><th>1M</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
   </section>
 </main>
+
+<button id="chat-fab" title="Bull vs Bear — ask about a ticker">🥊</button>
+
+<div id="chat-widget" class="hidden">
+  <div class="chat-head">
+    <div>
+      <span class="chat-title-main">TICKER FIGHT CLUB</span>
+      <span class="chat-title-sub">bull vs bear, judged by a PM &mdash; not financial advice</span>
+    </div>
+    <button id="chat-close" class="icon-btn">&times;</button>
+  </div>
+
+  <div class="chat-controls">
+    <input id="d-ticker" type="text" placeholder="TICKER" maxlength="10">
+    <button id="d-new-debate" class="btn-secondary">New fight</button>
+    <span id="debate-status" class="muted"></span>
+  </div>
+
+  <div id="fight-arena" class="hidden"></div>
+
+  <div id="debate-chat"></div>
+
+  <div id="debate-input-row">
+    <input id="d-question" type="text" placeholder="Paste a ticker above, then ask anything...">
+    <button id="d-ask">Ask</button>
+  </div>
+</div>
 
 <div id="buy-modal" class="hidden">
   <div class="modal-box">

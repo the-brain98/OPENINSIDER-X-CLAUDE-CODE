@@ -283,19 +283,34 @@ async function loadRotation(forceRefresh) {
       data
         .map(
           (r) => `
-    <tr>
+    <tr class="sector-row" onclick="toggleSectorInsiders('${r["Ticker"]}')">
       <td class="al mono">${r["Rank"]}</td>
-      <td class="al ticker clickable" onclick="openBuyModal('${r["Ticker"]}', ${r["Last"]})">${r["Ticker"]}</td>
-      <td class="al muted">${r["Sector"]}</td>
+      <td class="al ticker clickable" onclick="event.stopPropagation();openBuyModal('${r["Ticker"]}', ${r["Last"]})">${r["Ticker"]}</td>
+      <td class="al muted"><span class="sector-caret">&#9656;</span>${r["Sector"]}</td>
       <td class="mono">${fmtMoney(r["Last"])}</td>
       <td>${fmtPct(r["10d %"])}</td>
       <td>${fmtPct(r["% from 10d High"])}</td>
       <td class="mono">${r["RSI14"]}</td>
       <td class="mono">${r["Rel Vol (10d)"] ?? "—"}x</td>
       <td class="al"><span class="chip sig ${statusClass(r["Status"])}">${r["Status"]}</span></td>
+    </tr>
+    <tr class="sector-insiders hidden" data-etf="${r["Ticker"]}" data-sector="${r["Sector"]}">
+      <td colspan="9"><div class="sector-insiders-box"></div></td>
     </tr>`
         )
         .join("") || `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">No data</td></tr>`;
+
+    // the 2-minute auto-refresh rewrites tbody; restore any open dropdowns
+    expandedSectors.forEach((etf) => {
+      const row = tbody.querySelector(`tr.sector-insiders[data-etf="${etf}"]`);
+      if (row) {
+        row.classList.remove("hidden");
+        row.previousElementSibling.classList.add("expanded");
+        renderSectorInsiders(row);
+      } else {
+        expandedSectors.delete(etf);
+      }
+    });
 
     const counts = { Pullback: 0, Extended: 0, Fade: 0, Consolidate: 0 };
     data.forEach((r) => { counts[r["Status"]] = (counts[r["Status"]] || 0) + 1; });
@@ -314,6 +329,82 @@ async function loadRotation(forceRefresh) {
 }
 
 document.getElementById("r-refresh").addEventListener("click", () => loadRotation(true));
+
+const sectorInsidersCache = new Map(); // etf -> /api/rotation/insiders payload
+const expandedSectors = new Set();
+
+async function toggleSectorInsiders(etf) {
+  const row = document.querySelector(`#rotation-table tr.sector-insiders[data-etf="${etf}"]`);
+  if (!row) return;
+  if (!row.classList.contains("hidden")) {
+    row.classList.add("hidden");
+    row.previousElementSibling.classList.remove("expanded");
+    expandedSectors.delete(etf);
+    return;
+  }
+  row.classList.remove("hidden");
+  row.previousElementSibling.classList.add("expanded");
+  expandedSectors.add(etf);
+  await renderSectorInsiders(row);
+}
+
+async function renderSectorInsiders(row) {
+  const etf = row.dataset.etf;
+  const box = row.querySelector(".sector-insiders-box");
+  let data = sectorInsidersCache.get(etf);
+  if (!data) {
+    box.innerHTML = `<span class="muted">Loading last 24h insider buys...</span>`;
+    try {
+      const res = await fetch(`/api/rotation/insiders?etf=${etf}`);
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      sectorInsidersCache.set(etf, data);
+    } catch (e) {
+      const raw = e.message || String(e);
+      // connection-failure messages are multi-line urllib3 dumps; don't wallpaper the table with them
+      const msg = raw.length > 90 ? "openinsider.com isn't responding right now — try again in a bit." : raw;
+      box.innerHTML = `<span class="muted">Couldn't load insider buys: ${msg}</span>`;
+      return;
+    }
+  }
+
+  const sector = row.dataset.sector;
+  const label = data.marketWide
+    ? `Last 24h insider buys &mdash; market-wide (${sector} is broad beta)`
+    : `Last 24h insider buys in ${sector}`;
+  if (!data.buys.length) {
+    box.innerHTML = `
+      <div class="sector-insiders-head">${label} <span class="muted">&middot; via openinsider.com</span></div>
+      <span class="muted">No insider buys filed in the last 24 hours.</span>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="sector-insiders-head">${label} <span class="muted">&middot; via openinsider.com</span></div>
+    <table class="mini-table">
+      <thead><tr>
+        <th class="al">Ticker</th><th class="al">Company</th><th class="al">Insider</th><th class="al">Title</th>
+        <th>Price</th><th>Qty</th><th>Value</th><th class="al">Filed</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${data.buys
+          .map(
+            (b) => `
+        <tr>
+          <td class="al ticker clickable" onclick="openBuyModal('${b.ticker}', ${b.price})">${b.ticker}</td>
+          <td class="al trunc">${truncCell(b.company || "", 22)}</td>
+          <td class="al trunc">${truncCell(b.insider || "", 16)}</td>
+          <td class="al muted trunc">${truncCell(b.title || "", 14)}</td>
+          <td class="mono">${fmtMoney(b.price)}</td>
+          <td class="mono">${fmtNum(b.qty)}</td>
+          <td class="mono chip pos" style="background:none;padding:0">${fmtCompactMoney(b.value)}</td>
+          <td class="al muted">${(b.filingDate || "").split(" ")[0]}</td>
+          <td><button class="buy-btn" onclick="openBuyModal('${b.ticker}', ${b.price})">Buy</button></td>
+        </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+}
 
 function partyClass(partyShort) {
   if (partyShort === "D") return "party-d";
@@ -601,6 +692,351 @@ document.getElementById("buy-confirm").addEventListener("click", async () => {
   }
 });
 
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const debateHistories = {}; // ticker -> array of {role, text}
+const debatedTickers = new Set(); // tickers that already have a cached debate today
+let debateBusy = false;
+let fight = null;
+
+const MIN_FIGHT_MS = 9500; // user asked for a ~10 second bout
+const POW_WORDS = ["POW!", "BAM!", "BOOM!", "WHAM!", "SOCK!", "JAB!"];
+
+function debateRoleLabel(role) {
+  return { user: "You", bull: "Bull analyst", bear: "Bear analyst", pm: "PM verdict", error: "Error" }[role] || role;
+}
+
+function renderDebateChat() {
+  const ticker = document.getElementById("d-ticker").value.trim().toUpperCase();
+  const chat = document.getElementById("debate-chat");
+  const history = debateHistories[ticker] || [];
+  chat.innerHTML = history
+    .map(
+      (m) => `
+    <div class="debate-msg ${m.role}">
+      <span class="debate-role">${debateRoleLabel(m.role)}</span>${escapeHtml(m.text)}
+    </div>`
+    )
+    .join("");
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function setDebateStatus(msg, isError) {
+  const el = document.getElementById("debate-status");
+  el.textContent = msg;
+  el.style.color = isError ? "var(--red)" : "var(--muted)";
+}
+
+// ---- retro fight engine ----
+
+function startFight(ticker) {
+  if (fight) clearInterval(fight.timer);
+  const arena = document.getElementById("fight-arena");
+  arena.classList.remove("hidden");
+  arena.innerHTML = `
+    <div class="fight-hud">
+      <div class="fighter-hud"><div class="fighter-name">BEAR</div><div class="hp-bar"><div class="hp-fill" id="hp-bear"></div></div></div>
+      <div class="fight-vs">${escapeHtml(ticker)}</div>
+      <div class="fighter-hud right"><div class="fighter-name">BULL</div><div class="hp-bar"><div class="hp-fill" id="hp-bull"></div></div></div>
+    </div>
+    <div class="fighter bear" id="fighter-bear">🐻<span class="glove">🥊</span></div>
+    <div class="fighter bull" id="fighter-bull">🐂<span class="glove">🥊</span></div>
+    <div class="ref" id="fight-ref">🧑‍⚖️</div>
+    <div class="fight-banner" id="fight-banner">FIGHT!</div>`;
+  fight = { hp: { bull: 100, bear: 100 }, over: false, startedAt: Date.now(), timer: null };
+  setTimeout(() => {
+    const banner = document.getElementById("fight-banner");
+    if (banner && fight && !fight.over) banner.classList.add("hidden");
+  }, 900);
+  fight.timer = setInterval(fightExchange, 750);
+}
+
+function updateHp() {
+  const bullEl = document.getElementById("hp-bull");
+  const bearEl = document.getElementById("hp-bear");
+  if (bullEl) bullEl.style.width = `${fight.hp.bull}%`;
+  if (bearEl) bearEl.style.width = `${fight.hp.bear}%`;
+}
+
+function spawnPow(defender, big) {
+  const arena = document.getElementById("fight-arena");
+  const pow = document.createElement("div");
+  pow.className = big ? "pow big" : "pow";
+  pow.textContent = big ? "K.O.!" : POW_WORDS[Math.floor(Math.random() * POW_WORDS.length)];
+  const base = defender === "bear" ? 16 : 56; // % from left, near whoever got hit
+  pow.style.left = `${base + Math.random() * 10}%`;
+  pow.style.top = `${58 + Math.random() * 45}px`;
+  arena.appendChild(pow);
+  setTimeout(() => pow.remove(), 600);
+}
+
+function applyBruises(el, hp) {
+  el.style.filter = `drop-shadow(0 0 ${((100 - hp) / 12).toFixed(1)}px rgba(242, 89, 107, 0.9))`;
+  if (hp < 55 && !el.querySelector(".bandage")) {
+    el.insertAdjacentHTML("beforeend", '<span class="bandage">🩹</span>');
+  }
+}
+
+function fightExchange() {
+  if (!fight || fight.over) return;
+  const attacker = Math.random() < 0.5 ? "bull" : "bear";
+  const defender = attacker === "bull" ? "bear" : "bull";
+  const atkEl = document.getElementById(`fighter-${attacker}`);
+  const defEl = document.getElementById(`fighter-${defender}`);
+  if (!atkEl || !defEl) return;
+
+  atkEl.classList.add("lunge");
+  setTimeout(() => {
+    if (!fight) return;
+    defEl.classList.add("hit");
+    spawnPow(defender);
+    // keep both fighters standing until the real verdict lands
+    fight.hp[defender] = Math.max(24, fight.hp[defender] - (5 + Math.random() * 11));
+    updateHp();
+    applyBruises(defEl, fight.hp[defender]);
+    setTimeout(() => {
+      atkEl.classList.remove("lunge");
+      defEl.classList.remove("hit");
+    }, 230);
+  }, 150);
+}
+
+function finishFight(winnerSide) {
+  if (!fight || fight.over) return;
+  fight.over = true;
+  clearInterval(fight.timer);
+  const banner = document.getElementById("fight-banner");
+  if (!banner) return;
+
+  if (winnerSide !== "BULL" && winnerSide !== "BEAR") {
+    banner.textContent = "DRAW";
+    banner.classList.remove("hidden");
+    banner.classList.add("draw");
+    return;
+  }
+
+  const w = winnerSide.toLowerCase();
+  const l = w === "bull" ? "bear" : "bull";
+  fight.hp[l] = 0;
+  updateHp();
+  spawnPow(l, true);
+  const loserEl = document.getElementById(`fighter-${l}`);
+  const winnerEl = document.getElementById(`fighter-${w}`);
+  loserEl.classList.add("ko");
+  winnerEl.classList.add("champ");
+  setTimeout(() => {
+    winnerEl.insertAdjacentHTML("beforeend", '<span class="raised-hand">✋</span>');
+    document.getElementById("fight-ref").classList.add(w === "bull" ? "at-bull" : "at-bear");
+    banner.innerHTML = `WINNER!<span class="banner-sub">${w.toUpperCase()} TAKES IT</span>`;
+    banner.classList.remove("hidden");
+    banner.classList.add("gold");
+  }, 750);
+}
+
+function abortFight() {
+  if (fight) {
+    clearInterval(fight.timer);
+    fight = null;
+  }
+  const arena = document.getElementById("fight-arena");
+  arena.classList.add("hidden");
+  arena.innerHTML = "";
+}
+
+async function askDebate(forceRefresh) {
+  if (debateBusy) return;
+  const tickerEl = document.getElementById("d-ticker");
+  const ticker = tickerEl.value.trim().toUpperCase();
+  const questionEl = document.getElementById("d-question");
+  const question = forceRefresh
+    ? (questionEl.value.trim() || "What's your current read on this ticker right now?")
+    : questionEl.value.trim();
+
+  if (!ticker) {
+    setDebateStatus("Enter a ticker first.", true);
+    return;
+  }
+  if (!question) {
+    setDebateStatus("Ask a question first.", true);
+    return;
+  }
+
+  tickerEl.value = ticker;
+  debateHistories[ticker] = debateHistories[ticker] || [];
+  debateHistories[ticker].push({ role: "user", text: question });
+  renderDebateChat();
+  questionEl.value = "";
+
+  debateBusy = true;
+  document.getElementById("d-ask").disabled = true;
+
+  const expectFight = forceRefresh || !debatedTickers.has(ticker);
+  if (expectFight) {
+    startFight(ticker);
+    setDebateStatus("Live debate underway...", false);
+  } else {
+    setDebateStatus("Thinking...", false);
+  }
+
+  try {
+    const res = await fetch("/api/debate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticker, question, forceRefresh }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      abortFight();
+      debateHistories[ticker].push({ role: "error", text: data.error || "Request failed" });
+      renderDebateChat();
+      setDebateStatus(data.error || "Request failed", true);
+    } else {
+      debatedTickers.add(ticker);
+      const pushResults = () => {
+        if (data.freshDebate) {
+          debateHistories[ticker].push({ role: "bull", text: data.bull });
+          debateHistories[ticker].push({ role: "bear", text: data.bear });
+          debateHistories[ticker].push({ role: "pm", text: data.pmVerdict });
+        } else {
+          debateHistories[ticker].push({ role: "pm", text: data.answer });
+        }
+        renderDebateChat();
+        setDebateStatus(data.freshDebate ? "Full debate below." : "Answered from today's cached debate.", false);
+      };
+
+      if (fight && !fight.over && data.freshDebate) {
+        // let the bout run its ~10 seconds before the verdict lands
+        const delay = Math.max(0, MIN_FIGHT_MS - (Date.now() - fight.startedAt));
+        setTimeout(() => finishFight(data.winner || "DRAW"), delay);
+        setTimeout(pushResults, delay + 2300);
+      } else if (fight && !fight.over) {
+        finishFight(data.winner || "DRAW");
+        setTimeout(pushResults, 1800);
+      } else {
+        pushResults();
+      }
+    }
+  } catch (e) {
+    abortFight();
+    debateHistories[ticker].push({ role: "error", text: String(e) });
+    renderDebateChat();
+    setDebateStatus("Couldn't reach the dashboard server.", true);
+  } finally {
+    debateBusy = false;
+    document.getElementById("d-ask").disabled = false;
+  }
+}
+
+document.getElementById("chat-fab").addEventListener("click", () => {
+  document.getElementById("chat-widget").classList.remove("hidden");
+  document.getElementById("chat-fab").classList.add("hidden");
+  document.getElementById("d-ticker").focus();
+});
+document.getElementById("chat-close").addEventListener("click", () => {
+  document.getElementById("chat-widget").classList.add("hidden");
+  document.getElementById("chat-fab").classList.remove("hidden");
+});
+document.getElementById("d-ask").addEventListener("click", () => askDebate(false));
+document.getElementById("d-question").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") askDebate(false);
+});
+document.getElementById("d-new-debate").addEventListener("click", () => askDebate(true));
+document.getElementById("d-ticker").addEventListener("change", () => {
+  document.getElementById("d-ticker").value = document.getElementById("d-ticker").value.trim().toUpperCase();
+  renderDebateChat();
+});
+
+const fmtBigMoney = (v) => {
+  if (v === null || v === undefined) return "—";
+  const abs = Math.abs(v);
+  if (abs >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  return fmtMoney(v);
+};
+
+const fmtShares = (v) => {
+  if (v === null || v === undefined) return "—";
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(v);
+};
+
+function setTop20Status(msg, isError) {
+  const el = document.getElementById("top20-status");
+  el.textContent = msg;
+  el.style.color = isError ? "var(--red)" : "var(--muted)";
+}
+
+const top20ErrRow = (cols, err) =>
+  `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:24px">${err}</td></tr>`;
+
+async function loadTop20() {
+  const gBody = document.querySelector("#gainers-table tbody");
+  const mBody = document.querySelector("#megacaps-table tbody");
+  setTop20Status("Loading...", false);
+
+  try {
+    const res = await fetch("/api/top20");
+    const data = await res.json();
+
+    if (data.gainers) {
+      gBody.innerHTML =
+        data.gainers
+          .map(
+            (g, i) => `
+      <tr>
+        <td class="al mono">${i + 1}</td>
+        <td class="al ticker clickable" onclick="openBuyModal('${g.symbol}', ${g.last ?? "null"})">${g.symbol}</td>
+        <td class="al trunc">${truncCell(g.name, 26)}</td>
+        <td class="mono">${fmtMoney(g.last)}</td>
+        <td>${fmtPct(g.changePct)}</td>
+        <td class="mono">${fmtShares(g.volume)}</td>
+        <td class="mono">${fmtBigMoney(g.marketCap)}</td>
+        <td><button class="buy-btn" onclick="openBuyModal('${g.symbol}', ${g.last ?? "null"})">Buy</button></td>
+      </tr>`
+          )
+          .join("") || top20ErrRow(8, "No gainers returned");
+    } else {
+      gBody.innerHTML = top20ErrRow(8, data.gainersError || "Couldn't load gainers");
+    }
+
+    if (data.megaCaps) {
+      mBody.innerHTML =
+        data.megaCaps
+          .map(
+            (m) => `
+      <tr>
+        <td class="al mono">${m.rank}</td>
+        <td class="al ticker clickable" onclick="openBuyModal('${m.symbol}', ${m.last ?? "null"})">${m.symbol}</td>
+        <td class="al trunc">${truncCell(m.name, 26)}</td>
+        <td class="mono">${fmtMoney(m.last)}</td>
+        <td class="al">${sparklineSvg(m.sparkline)}</td>
+        <td>${fmtPct(m.change1D)}</td>
+        <td>${fmtPct(m.change5D)}</td>
+        <td>${fmtPct(m.change1M)}</td>
+        <td><button class="buy-btn" onclick="openBuyModal('${m.symbol}', ${m.last ?? "null"})">Buy</button></td>
+      </tr>`
+          )
+          .join("") || top20ErrRow(9, "No data")
+    } else {
+      mBody.innerHTML = top20ErrRow(9, data.megaCapsError || "Couldn't load mega caps");
+    }
+
+    const anyError = data.gainersError || data.megaCapsError;
+    setTop20Status(anyError ? "Partially loaded" : `Updated ${new Date().toLocaleTimeString()}`, !!anyError);
+  } catch (e) {
+    gBody.innerHTML = top20ErrRow(8, `Couldn't load: ${e}`);
+    mBody.innerHTML = top20ErrRow(9, `Couldn't load: ${e}`);
+    setTop20Status("Couldn't load Top 20", true);
+  }
+}
+
+document.getElementById("t20-refresh").addEventListener("click", loadTop20);
+
 const TAB_STORAGE_KEY = "dashboard-active-tab";
 
 function switchTab(name) {
@@ -613,7 +1049,8 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
-switchTab(localStorage.getItem(TAB_STORAGE_KEY) || "insiders");
+const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
+switchTab(document.querySelector(`.tab-btn[data-tab="${savedTab}"]`) ? savedTab : "insiders");
 
 restoreFilters();
 loadAccountHashes();
@@ -622,7 +1059,9 @@ loadInsiders();
 loadRankedPicks();
 loadRotation(false);
 loadPoliticians(false);
+loadTop20();
 setInterval(loadPortfolio, 15000);
+setInterval(loadTop20, 120000);
 setInterval(loadInsiders, 120000);
 setInterval(loadRankedPicks, 120000);
 setInterval(() => loadRotation(false), 120000);
